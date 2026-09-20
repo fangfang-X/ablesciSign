@@ -80,10 +80,6 @@ def load_env_file():
     elif account_lines:
         print(f"警告：存在无键账号行，但 {ENV_ACCOUNTS} 已通过系统或标准键值对设置，忽略无键行")
 
-    if ENV_ACCOUNTS in os.environ:
-        val = os.environ[ENV_ACCOUNTS]
-        print(f"当前 {ENV_ACCOUNTS} 内容预览: {val[:100]}{'...' if len(val) > 100 else ''}")
-
 load_env_file()
 
 def get_beijing_time():
@@ -214,9 +210,14 @@ class AbleSciAuto:
             response = self.session.get(login_url, headers=self.headers, timeout=30)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
+                # 新版登录页将令牌放在 meta 中，旧版 input 作为回退。
+                csrf_meta = soup.find('meta', {'name': 'csrf-token'})
+                if csrf_meta and csrf_meta.get('content', '').strip():
+                    return csrf_meta['content'].strip()
                 csrf_token = soup.find('input', {'name': '_csrf'})
-                if csrf_token:
-                    return csrf_token.get('value', '')
+                if csrf_token and csrf_token.get('value', '').strip():
+                    return csrf_token['value'].strip()
+                self.log("登录页未找到有效的CSRF令牌，请检查页面结构或访问验证", "error")
             else:
                 self.log(f"获取CSRF令牌失败，状态码: {response.status_code}", "error")
         except Exception as e:
@@ -396,9 +397,6 @@ def get_accounts():
     if not accounts_env:
         return []
     
-    # 调试输出
-    print(f"原始账号环境变量内容: {repr(accounts_env)}")
-    
     accounts = []
     # 支持换行符、分号、逗号分隔
     for line in accounts_env.splitlines():
@@ -425,7 +423,7 @@ def get_accounts():
         elif "|" in account:
             email, password = account.split("|", 1)
         else:
-            print(f"警告：跳过格式错误的账号项: {account}")
+            print("警告：跳过格式错误的账号项，请检查账号配置")
             continue
             
         email = email.strip()
@@ -433,7 +431,7 @@ def get_accounts():
         if email and password:
             valid_accounts.append((email, password))
         else:
-            print(f"警告：账号或密码为空: {email}:{password}")
+            print("警告：账号或密码为空，请检查账号配置")
     
     return valid_accounts
 
